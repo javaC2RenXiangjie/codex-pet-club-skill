@@ -1,6 +1,6 @@
 ---
 name: codex-pet-club
-description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user asks to browse remote pets, install or update a pet automatically, validate or package a local Codex v2 pet, publish a local pet to the moderated remote library, configure the registry endpoint, or recover an overwritten local pet.
+description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user provides a website pet ID and asks Codex to download or install that pet locally, asks to browse remote pets, validate or package a local Codex v2 pet, publish a local pet to the moderated library, configure the registry endpoint, or recover an overwritten local pet.
 ---
 
 # Codex Pet Club
@@ -18,8 +18,11 @@ downloads, ZIP extraction, atlas checks, or upload requests.
 - Never print authorization tokens. Prefer the local config file or environment
   variable when a future registry requires credentials.
 - Do not call a concept source kit an installable Codex pet. Installable pets
-  require `pet.json`, `spritesheet.webp`, `spriteVersionNumber: 2`, and a
+  require `pet.json`, `spritesheet.webp`, `id`, `displayName`,
+  `spritesheetPath: "spritesheet.webp"`, `spriteVersionNumber: 2`, and a
   `1536x2288` atlas.
+- Do not expose or suggest a package URL. Users identify remote pets only by
+  the public catalog ID; the CLI resolves that ID to package bytes.
 
 ## CLI
 
@@ -33,8 +36,9 @@ Commands:
 
 - `configure --api <url>`: save the registry base URL.
 - `list [--json]`: list published installable pets.
-- `info <slug>`: show one remote pet and its license.
-- `install <slug>`: download, validate, back up any existing copy, and install.
+- `info <ID>`: show one remote pet and its license.
+- `install <ID>`: resolve the unique catalog ID, download, validate, back up
+  any existing local copy, and install to `${CODEX_HOME:-~/.codex}/pets`.
 - `validate <path-or-local-name>`: validate a local Codex v2 pet.
 - `pack <path-or-local-name> --output <zip>`: create a validated upload ZIP.
 - `publish <path-or-local-name>`: validate and upload to the moderation queue.
@@ -48,10 +52,13 @@ local prototype, use `--api http://localhost:3001`.
 
 ### Install a remote pet
 
-1. Run `list` when the user has not provided an exact slug.
-2. Confirm the selected pet name and license in the normal response.
-3. Run `install <slug>`.
-4. Report the installed path and whether an existing pet was backed up.
+1. Extract the exact catalog ID from requests such as “把这个桌宠下载到我本地，ID：...”.
+2. Run `list` only when the user has not provided an exact ID.
+3. Run `info <ID>` when the user asks to verify identity or licensing first.
+4. Run `install <ID>` without asking the user to download any file manually.
+5. Report the installed path and whether an existing pet was backed up.
+6. Tell the user to open Codex Settings > Pets and use the refresh button if
+   the newly installed pet is not immediately visible.
 
 ### Publish a local pet
 

@@ -1,6 +1,6 @@
 # Codex Pet Club Skill
 
-让 Codex 自动浏览、安装、校验、打包和投稿桌宠，省去手动下载、解压与搬运文件。
+让 Codex 按网站唯一 ID 自动安装桌宠，省去手动下载、解压与搬运文件。
 
 ## 能做什么
 
@@ -22,10 +22,10 @@ git clone https://github.com/javaC2RenXiangjie/codex-pet-club-skill `
   "$env:USERPROFILE\.codex\skills\codex-pet-club"
 ```
 
-重新打开 Codex 后，可以直接说：
+重新打开 Codex 后，可以直接复制网站卡片中的 ID，然后说：
 
 ```text
-使用 $codex-pet-club，把桌宠库配置为 http://localhost:3001，然后列出可以安装的桌宠。
+使用 $codex-pet-club，把这个桌宠下载到我本地，ID：9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 ```
 
 也可以直接调用随 Skill 提供的零依赖 CLI：
@@ -33,6 +33,7 @@ git clone https://github.com/javaC2RenXiangjie/codex-pet-club-skill `
 ```powershell
 python scripts/pet_club.py configure --api http://localhost:3001
 python scripts/pet_club.py list
+python scripts/pet_club.py install 9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 python scripts/pet_club.py validate C:\path\to\my-pet
 python scripts/pet_club.py publish C:\path\to\my-pet
 ```

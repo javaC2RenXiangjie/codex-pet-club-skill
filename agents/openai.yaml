@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Pet Club"
-  short_description: "Browse, install, publish, and restore Codex pets"
-  default_prompt: "Use $codex-pet-club to install a remote pet or publish one from my local Codex pets folder."
+  short_description: "Install Codex pets by unique website ID"
+  default_prompt: "Use $codex-pet-club to download and install the pet with the website ID I provide."

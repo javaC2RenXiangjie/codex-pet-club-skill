@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import struct
 import sys
@@ -102,7 +103,11 @@ def request_json(url: str, method: str = "GET", body: bytes | None = None, heade
 
 
 def request_bytes(url: str) -> tuple[bytes, dict[str, str]]:
-    request = urllib.request.Request(url, method="GET")
+    request = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"X-Codex-Pet-Client": "skill-v1"},
+    )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             raw = response.read(MAX_PACKAGE_BYTES + 1)
@@ -166,9 +171,15 @@ def validate_manifest(manifest: object) -> dict:
         raise ClubError("pet.json must contain a JSON object")
     if manifest.get("spriteVersionNumber") != 2:
         raise ClubError("pet.json must contain spriteVersionNumber: 2")
-    name = manifest.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise ClubError("pet.json must contain a non-empty name")
+    pet_id = manifest.get("id")
+    if not isinstance(pet_id, str) or not pet_id.strip():
+        raise ClubError("pet.json must contain a non-empty id")
+    slugify(pet_id)
+    display_name = manifest.get("displayName")
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise ClubError("pet.json must contain a non-empty displayName")
+    if manifest.get("spritesheetPath") != "spritesheet.webp":
+        raise ClubError('pet.json must contain spritesheetPath: "spritesheet.webp"')
     return manifest
 
 
@@ -185,10 +196,13 @@ def validate_pet_dir(path: Path) -> dict:
     dimensions = webp_dimensions(sheet_path.read_bytes())
     if dimensions != EXPECTED_ATLAS:
         raise ClubError(f"Expected atlas {EXPECTED_ATLAS[0]}x{EXPECTED_ATLAS[1]}, got {dimensions[0]}x{dimensions[1]}")
-    slug = manifest.get("slug") or path.name
-    if not isinstance(slug, str) or not slug.strip():
-        slug = path.name
-    return {"path": str(path), "name": manifest["name"], "slug": slugify(slug), "manifest": manifest, "atlas": dimensions}
+    return {
+        "path": str(path),
+        "name": manifest["displayName"],
+        "petKey": slugify(manifest["id"]),
+        "manifest": manifest,
+        "atlas": dimensions,
+    }
 
 
 def validate_zip(raw: bytes) -> tuple[dict, PurePosixPath, zipfile.ZipFile]:
@@ -224,7 +238,12 @@ def validate_zip(raw: bytes) -> tuple[dict, PurePosixPath, zipfile.ZipFile]:
     if dimensions != EXPECTED_ATLAS:
         archive.close()
         raise ClubError(f"Expected atlas {EXPECTED_ATLAS[0]}x{EXPECTED_ATLAS[1]}, got {dimensions[0]}x{dimensions[1]}")
-    result = {"name": manifest["name"], "slug": slugify(str(manifest.get("slug") or root.name)), "manifest": manifest, "atlas": dimensions}
+    result = {
+        "name": manifest["displayName"],
+        "petKey": slugify(manifest["id"]),
+        "manifest": manifest,
+        "atlas": dimensions,
+    }
     return result, root, archive
 
 
@@ -234,6 +253,13 @@ def slugify(value: str) -> str:
     if not cleaned or len(cleaned) > 64:
         raise ClubError("Pet slug must be 1-64 letters, digits, or hyphen-separated words")
     return cleaned
+
+
+def public_id(value: str) -> str:
+    value = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{7,63}", value):
+        raise ClubError("Pet ID must be 8-64 letters, digits, underscores, or hyphens")
+    return value
 
 
 def resolve_local(value: str) -> Path:
@@ -274,14 +300,16 @@ def backup_existing(target: Path) -> Path | None:
     return backup
 
 
-def install_package(raw: bytes, expected_slug: str | None = None) -> dict:
+def install_package(raw: bytes, expected_pet_key: str | None = None) -> dict:
     result, root, archive = validate_zip(raw)
     try:
-        if expected_slug and result["slug"] != slugify(expected_slug):
-            raise ClubError(f"Package slug {result['slug']} does not match requested {expected_slug}")
+        if expected_pet_key and result["petKey"] != slugify(expected_pet_key):
+            raise ClubError(
+                f"Package id {result['petKey']} does not match registry petKey {expected_pet_key}"
+            )
         pets = pet_root()
         pets.mkdir(parents=True, exist_ok=True)
-        staging = Path(tempfile.mkdtemp(prefix=f".pet-club-{result['slug']}-", dir=pets))
+        staging = Path(tempfile.mkdtemp(prefix=f".pet-club-{result['petKey']}-", dir=pets))
         prefix = "" if str(root) == "." else f"{root.as_posix()}/"
         for info in archive.infolist():
             if info.is_dir():
@@ -295,7 +323,7 @@ def install_package(raw: bytes, expected_slug: str | None = None) -> dict:
             with archive.open(info) as source, destination.open("wb") as sink:
                 shutil.copyfileobj(source, sink)
         validate_pet_dir(staging)
-        target = pets / result["slug"]
+        target = pets / result["petKey"]
         backup = backup_existing(target)
         try:
             os.replace(staging, target)
@@ -344,23 +372,30 @@ def command_list(args: argparse.Namespace) -> None:
         print("No published installable pets yet.")
         return
     for pet in pets:
-        print(f"{pet.get('slug','-'):<24} {pet.get('name','-')}  [{pet.get('license','unknown')}]")
+        print(
+            f"{pet.get('id','-'):<38} {pet.get('displayName','-')}  "
+            f"[{pet.get('license','unknown')}]"
+        )
 
 
 def command_info(args: argparse.Namespace) -> None:
-    slug = urllib.parse.quote(slugify(args.slug), safe="")
-    print(json.dumps(request_json(f"{api_base(args)}/api/pets/{slug}"), ensure_ascii=False, indent=2))
+    encoded = urllib.parse.quote(public_id(args.pet_id), safe="")
+    print(json.dumps(request_json(f"{api_base(args)}/api/pets/{encoded}"), ensure_ascii=False, indent=2))
 
 
 def command_install(args: argparse.Namespace) -> None:
-    slug = slugify(args.slug)
-    encoded = urllib.parse.quote(slug, safe="")
+    catalog_id = public_id(args.pet_id)
+    encoded = urllib.parse.quote(catalog_id, safe="")
     raw, headers = request_bytes(f"{api_base(args)}/api/pets/{encoded}/package")
     expected = headers.get("x-pet-sha256")
     actual = hashlib.sha256(raw).hexdigest()
     if expected and expected.lower() != actual:
         raise ClubError("Downloaded package checksum does not match the registry")
-    result = install_package(raw, slug)
+    expected_pet_key = headers.get("x-pet-key")
+    if not expected_pet_key:
+        raise ClubError("Registry response is missing x-pet-key")
+    result = install_package(raw, expected_pet_key)
+    result["catalogId"] = catalog_id
     result["sha256"] = actual
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -385,7 +420,7 @@ def command_publish(args: argparse.Namespace) -> None:
     manifest = result["manifest"]
     metadata = {
         "name": result["name"],
-        "slug": result["slug"],
+        "petKey": result["petKey"],
         "description": manifest.get("description", ""),
         "author": manifest.get("author", ""),
         "license": manifest.get("license", "unspecified"),
@@ -447,11 +482,11 @@ def parser() -> argparse.ArgumentParser:
     listing.set_defaults(func=command_list)
 
     info = sub.add_parser("info")
-    info.add_argument("slug")
+    info.add_argument("pet_id", metavar="ID")
     info.set_defaults(func=command_info)
 
     install = sub.add_parser("install")
-    install.add_argument("slug")
+    install.add_argument("pet_id", metavar="ID")
     install.set_defaults(func=command_install)
 
     validate = sub.add_parser("validate")
