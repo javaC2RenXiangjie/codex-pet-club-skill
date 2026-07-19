@@ -24,6 +24,8 @@ import zipfile
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
+DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
+DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/1.0"
 
 
 class ClubError(RuntimeError):
@@ -75,14 +77,14 @@ def normalize_api(value: str) -> str:
 
 
 def api_base(args: argparse.Namespace) -> str:
-    value = args.api or os.environ.get("CODEX_PET_CLUB_API") or load_config().get("api")
-    if not value:
-        raise ClubError("Registry is not configured. Run: configure --api <site-url>")
+    value = args.api or os.environ.get("CODEX_PET_CLUB_API") or load_config().get("api") or DEFAULT_API
     return normalize_api(str(value))
 
 
 def request_json(url: str, method: str = "GET", body: bytes | None = None, headers: dict | None = None) -> dict:
-    request = urllib.request.Request(url, data=body, method=method, headers=headers or {})
+    request_headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
+    request_headers.update(headers or {})
+    request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read(MAX_PACKAGE_BYTES + 1)
@@ -106,7 +108,11 @@ def request_bytes(url: str) -> tuple[bytes, dict[str, str]]:
     request = urllib.request.Request(
         url,
         method="GET",
-        headers={"X-Codex-Pet-Client": "skill-v1"},
+        headers={
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept": "application/zip",
+            "X-Codex-Pet-Client": "skill-v1",
+        },
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:

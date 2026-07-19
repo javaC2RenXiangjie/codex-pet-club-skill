@@ -28,14 +28,19 @@ git clone https://github.com/javaC2RenXiangjie/codex-pet-club-skill `
 使用 $codex-pet-club，把这个桌宠下载到我本地，ID：9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 ```
 
-也可以直接调用随 Skill 提供的零依赖 CLI：
+Skill 默认连接正式桌宠库，无需额外配置。也可以直接调用随 Skill 提供的零依赖 CLI：
 
 ```powershell
-python scripts/pet_club.py configure --api http://localhost:3001
 python scripts/pet_club.py list
 python scripts/pet_club.py install 9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 python scripts/pet_club.py validate C:\path\to\my-pet
 python scripts/pet_club.py publish C:\path\to\my-pet
+```
+
+本地开发时可临时覆盖桌宠库地址：
+
+```powershell
+python scripts/pet_club.py configure --api http://localhost:3001
 ```
 
 ## 仓库结构

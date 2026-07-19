@@ -46,7 +46,8 @@ Commands:
 - `restore <slug> [--backup <path>]`: restore the newest or selected backup.
 
 Pass `--api <url>` before a command to override saved configuration. For the
-local prototype, use `--api http://localhost:3001`.
+official library, the default is `https://codex-pet-club.renxiangjie.workers.dev`.
+For local development, override it with `--api http://localhost:3001`.
 
 ## Workflows
 
