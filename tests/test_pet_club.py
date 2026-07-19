@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.error
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "pet_club.py"
@@ -73,6 +74,24 @@ class SubmissionStatusTests(unittest.TestCase):
             f"https://pets.example/api/submissions/{submission_id}"
         )
         self.assertEqual(json.loads(stdout.getvalue()), expected)
+
+    def test_rate_limit_reports_retry_interval_without_retrying(self):
+        error = urllib.error.HTTPError(
+            "https://pets.example/api/pets",
+            429,
+            "Too Many Requests",
+            {"Retry-After": "120"},
+            io.BytesIO(b'{"error":"limited"}'),
+        )
+        with patch("urllib.request.urlopen", side_effect=error), self.assertRaisesRegex(
+            pet_club.ClubError,
+            "Retry after about 120 seconds",
+        ):
+            pet_club.request_json(
+                "https://pets.example/api/pets",
+                method="POST",
+                body=b"test",
+            )
 
 
 if __name__ == "__main__":

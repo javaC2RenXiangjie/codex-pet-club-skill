@@ -41,6 +41,10 @@ contract below. No account is required in the first release; server-side ZIP
 validation, duplicate protection, a bounded pending queue, and manual review
 prevent uploads from becoming public directly.
 
+Limit each source to three upload attempts per rolling one-hour window. Return
+HTTP 429 with `Retry-After` when exceeded. The Skill must report that interval
+without retrying automatically.
+
 Accept `multipart/form-data` fields:
 
 - `package`: ZIP, at most 32 MiB.
@@ -71,17 +75,21 @@ Return the current moderation status for an unguessable submission ID:
 {"submission":{"id":"...","petKey":"...","displayName":"...","status":"pending","sha256":"...","createdAt":"...","updatedAt":"...","reviewedAt":null,"reviewNote":""}}
 ```
 
-Possible states are `pending`, `published`, and `rejected`. A published
-submission is immediately available through the normal public pet endpoints
-using the same ID.
+Possible states are `pending`, `published`, `unpublished`, and `rejected`. A
+published submission is immediately available through the normal public pet
+endpoints using the same ID. An unpublished submission retains its package and
+audit history but is absent from public metadata and package endpoints.
 
 ## Storage
 
 - `registry/catalog.json`: version history and active versions for official
   releases shipped with the Worker.
-- D1 `DB`: pending, published, and rejected community submission metadata.
+- D1 `DB`: community submission metadata, hashed upload-rate windows, and
+  immutable moderation events.
 - R2 `PET_FILES`: immutable published ZIP bytes under
   `packages/{catalog-id}/{version}/{sha256}.zip`; pending bytes stay isolated
   until approval.
 - Public listing endpoints merge official releases with D1 rows whose status
   is `published`.
+- R2 `backups/d1/`: scheduled and manually triggered JSON snapshots of D1
+  submission metadata and moderation events.
