@@ -9,7 +9,7 @@ All successful responses are JSON except package bytes.
 Return only published, installable Codex v2 pets:
 
 ```json
-{"pets":[{"id":"9d1ef2a4-55df-4d99-a722-18d1db7cb83a","petKey":"pixel-corgi","displayName":"像素柯基","description":"...","author":"...","license":"MIT","sha256":"...","sizeBytes":12345,"updatedAt":"..."}]}
+{"pets":[{"id":"9d1ef2a4-55df-4d99-a722-18d1db7cb83a","petKey":"pixel-corgi","displayName":"像素柯基","description":"...","author":"...","license":"MIT","version":"1.2.0","sha256":"...","sizeBytes":12345,"updatedAt":"..."}]}
 ```
 
 `id` is the public catalog ID copied from the website. `petKey` is the
@@ -24,12 +24,21 @@ unpublished entries.
 
 Return package bytes with a private no-store cache policy, an `ETag` based on
 SHA-256, the checksum in `x-pet-sha256`, and the manifest id in `x-pet-key`.
+Return the active catalog version in `x-pet-version`.
 The website never links this endpoint; the Skill resolves catalog IDs and
 consumes the bytes. Require `x-codex-pet-client: skill-v1` to reject ordinary
 browser navigation. This header is an interface guard, not a secret or DRM
 boundary, because the Skill is open source.
 
+Published entries retain immutable releases. The public catalog exposes only
+the entry selected by `activeVersion`; unpublished entries return 404 without
+deleting their historical package objects.
+
 ### `POST /api/pets`
+
+The official public registry currently returns 403 while community submission
+authentication and rate limits are unfinished. A registry that enables
+moderated submissions uses the contract below.
 
 Accept `multipart/form-data` fields:
 
@@ -55,6 +64,9 @@ becomes the public catalog ID when published.
 
 ## Storage
 
-- D1 `DB`: searchable metadata, unique catalog ID, and moderation status.
-- R2 `PET_FILES`: ZIP bytes under pending or published object keys.
-- Public listing endpoints return only `published` rows.
+- `registry/catalog.json`: version history, active version, publication status,
+  and status audit trail released with the Worker.
+- R2 `PET_FILES`: immutable ZIP bytes. New objects use
+  `packages/{catalog-id}/{version}/{sha256}.zip`.
+- Public listing endpoints return only `published` entries and resolve their
+  `activeVersion`.

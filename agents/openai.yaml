@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Pet Club"
-  short_description: "Install Codex pets by unique website ID"
-  default_prompt: "Use $codex-pet-club to download and install the pet with the website ID I provide."
+  short_description: "Install and track Codex pets by website ID"
+  default_prompt: "Use $codex-pet-club to install the active version of the pet ID I provide."
