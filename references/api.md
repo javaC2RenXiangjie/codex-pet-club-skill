@@ -36,9 +36,10 @@ deleting their historical package objects.
 
 ### `POST /api/pets`
 
-The official public registry currently returns 403 while community submission
-authentication and rate limits are unfinished. A registry that enables
-moderated submissions uses the contract below.
+The official public registry accepts moderated Skill submissions using the
+contract below. No account is required in the first release; server-side ZIP
+validation, duplicate protection, a bounded pending queue, and manual review
+prevent uploads from becoming public directly.
 
 Accept `multipart/form-data` fields:
 
@@ -55,18 +56,32 @@ already validates locally.
 Return HTTP 202:
 
 ```json
-{"submission":{"id":"...","petKey":"...","status":"pending","sha256":"..."}}
+{"submission":{"id":"...","petKey":"...","status":"pending","sha256":"...","statusPath":"/api/submissions/..."}}
 ```
 
 Uploads are never published directly. A moderator changes `pending` to
 `published` after visual, licensing, and safety review. That submission id
 becomes the public catalog ID when published.
 
+### `GET /api/submissions/{id}`
+
+Return the current moderation status for an unguessable submission ID:
+
+```json
+{"submission":{"id":"...","petKey":"...","displayName":"...","status":"pending","sha256":"...","createdAt":"...","updatedAt":"...","reviewedAt":null,"reviewNote":""}}
+```
+
+Possible states are `pending`, `published`, and `rejected`. A published
+submission is immediately available through the normal public pet endpoints
+using the same ID.
+
 ## Storage
 
-- `registry/catalog.json`: version history, active version, publication status,
-  and status audit trail released with the Worker.
-- R2 `PET_FILES`: immutable ZIP bytes. New objects use
-  `packages/{catalog-id}/{version}/{sha256}.zip`.
-- Public listing endpoints return only `published` entries and resolve their
-  `activeVersion`.
+- `registry/catalog.json`: version history and active versions for official
+  releases shipped with the Worker.
+- D1 `DB`: pending, published, and rejected community submission metadata.
+- R2 `PET_FILES`: immutable published ZIP bytes under
+  `packages/{catalog-id}/{version}/{sha256}.zip`; pending bytes stay isolated
+  until approval.
+- Public listing endpoints merge official releases with D1 rows whose status
+  is `published`.

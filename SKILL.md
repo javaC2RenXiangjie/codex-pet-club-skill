@@ -45,7 +45,9 @@ Commands:
 - `pack <path-or-local-name> --output <zip>`: create a validated upload ZIP.
 - `publish <path-or-local-name>`: validate and upload when the configured
   registry has community submissions enabled. The official public registry
-  currently keeps this endpoint closed.
+  accepts uploads into a protected moderation queue.
+- `status <SUBMISSION_ID>`: query whether an upload is still pending, published,
+  or rejected, including the moderator note when present.
 - `backups`: list restorable local backups.
 - `installed`: list catalog IDs, versions, and checksums installed by the Skill.
 - `restore <slug> [--backup <path>]`: restore the newest or selected backup.
@@ -73,9 +75,10 @@ For local development, override it with `--api http://localhost:3001`.
    path.
 2. Run `validate` and stop on every failure.
 3. Run `publish` only when the user explicitly requested an upload.
-4. Report the returned submission id and `pending` moderation status. If the
-   registry returns 403, explain that submissions are closed; do not bypass
-   the registry or expose a package URL.
+4. Report the returned submission id, status URL, and `pending` moderation
+   status. Never claim that a pending upload is publicly available.
+5. When the user asks for progress, run `status <SUBMISSION_ID>` and report the
+   current state. A `published` submission can be installed with the same ID.
 
 ### Recover an existing pet
 
