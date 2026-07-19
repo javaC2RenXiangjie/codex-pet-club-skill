@@ -25,7 +25,8 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
 DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.3.2"
+DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.4.1"
+API_KEY_PATTERN = re.compile(r"^cpc_sk_([a-f0-9]{8})_([A-Za-z0-9_-]{32,})$")
 
 
 class ClubError(RuntimeError):
@@ -71,9 +72,13 @@ def load_config() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def save_config(api: str) -> Path:
-    api = normalize_api(api)
-    return atomic_write_json(config_path(), {"api": api})
+def save_config(data: dict) -> Path:
+    path = atomic_write_json(config_path(), data)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return path
 
 
 def load_installed() -> dict:
@@ -122,6 +127,35 @@ def normalize_api(value: str) -> str:
 def api_base(args: argparse.Namespace) -> str:
     value = args.api or os.environ.get("CODEX_PET_CLUB_API") or load_config().get("api") or DEFAULT_API
     return normalize_api(str(value))
+
+
+def normalize_api_key(value: str) -> str:
+    key = value.strip()
+    if not API_KEY_PATTERN.fullmatch(key):
+        raise ClubError("Skill Key must use the cpc_sk_<prefix>_<secret> format")
+    return key
+
+
+def key_preview(value: str) -> str:
+    match = API_KEY_PATTERN.fullmatch(normalize_api_key(value))
+    assert match is not None
+    return f"cpc_sk_{match.group(1)}_••••••••"
+
+
+def auth_key(required: bool = False) -> str | None:
+    value = os.environ.get("CODEX_PET_CLUB_KEY") or load_config().get("key")
+    if value:
+        return normalize_api_key(str(value))
+    if required:
+        raise ClubError(
+            "A Codex Pet Club Skill Key is required. Create one on /account, then run "
+            "configure --key <KEY>."
+        )
+    return None
+
+
+def authorization_headers(key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {normalize_api_key(key)}"}
 
 
 def request_json(url: str, method: str = "GET", body: bytes | None = None, headers: dict | None = None) -> dict:
@@ -427,8 +461,59 @@ def multipart(package: bytes, metadata: dict) -> tuple[bytes, str]:
 
 
 def command_configure(args: argparse.Namespace) -> None:
-    path = save_config(args.configure_api)
-    print(json.dumps({"api": normalize_api(args.configure_api), "config": str(path)}, ensure_ascii=False))
+    config = load_config()
+    changed = False
+    identity = None
+    if args.configure_api:
+        config["api"] = normalize_api(args.configure_api)
+        changed = True
+    if args.clear_key:
+        config.pop("key", None)
+        changed = True
+    supplied_key = args.configure_key
+    if args.key_stdin:
+        supplied_key = sys.stdin.readline().strip()
+    if supplied_key is not None:
+        key = normalize_api_key(supplied_key)
+        target_api = normalize_api(str(config.get("api") or DEFAULT_API))
+        identity = request_json(
+            f"{target_api}/api/me",
+            headers=authorization_headers(key),
+        ).get("user")
+        if not isinstance(identity, dict):
+            raise ClubError("Registry did not return a valid account for this Skill Key")
+        config["key"] = key
+        changed = True
+    if not changed:
+        raise ClubError("configure requires --api, --key, --key-stdin, or --clear-key")
+    path = save_config(config)
+    response = {
+        "api": normalize_api(str(config.get("api") or DEFAULT_API)),
+        "keyConfigured": "key" in config,
+        "config": str(path),
+    }
+    if config.get("key"):
+        response["keyPreview"] = key_preview(str(config["key"]))
+    if identity:
+        response["user"] = identity
+    print(json.dumps(response, ensure_ascii=False, indent=2))
+
+
+def command_account(args: argparse.Namespace) -> None:
+    key = auth_key(required=True)
+    assert key is not None
+    response = request_json(
+        f"{api_base(args)}/api/me",
+        headers=authorization_headers(key),
+    )
+    user = response.get("user")
+    if not isinstance(user, dict):
+        raise ClubError("Registry returned an unexpected account response")
+    print(json.dumps({
+        "api": api_base(args),
+        "keyPreview": key_preview(key),
+        "user": user,
+    }, ensure_ascii=False, indent=2))
 
 
 def command_list(args: argparse.Namespace) -> None:
@@ -491,6 +576,8 @@ def command_pack(args: argparse.Namespace) -> None:
 
 
 def command_publish(args: argparse.Namespace) -> None:
+    key = auth_key(required=True)
+    assert key is not None
     raw, result = pack_pet(resolve_local(args.local))
     manifest = result["manifest"]
     metadata = {
@@ -506,7 +593,11 @@ def command_publish(args: argparse.Namespace) -> None:
         f"{api_base(args)}/api/pets",
         method="POST",
         body=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(len(body))},
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body)),
+            **authorization_headers(key),
+        },
     )
     print(json.dumps(response, ensure_ascii=False, indent=2))
 
@@ -561,8 +652,15 @@ def parser() -> argparse.ArgumentParser:
     sub = root.add_subparsers(dest="command", required=True)
 
     configure = sub.add_parser("configure")
-    configure.add_argument("--api", dest="configure_api", required=True)
+    configure.add_argument("--api", dest="configure_api")
+    key_options = configure.add_mutually_exclusive_group()
+    key_options.add_argument("--key", dest="configure_key")
+    key_options.add_argument("--key-stdin", action="store_true")
+    key_options.add_argument("--clear-key", action="store_true")
     configure.set_defaults(func=command_configure)
+
+    account = sub.add_parser("account")
+    account.set_defaults(func=command_account)
 
     listing = sub.add_parser("list")
     listing.add_argument("--json", action="store_true")
