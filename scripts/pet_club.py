@@ -25,12 +25,30 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
 DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.4.1"
+SKILL_VERSION = "0.4.2"
+DEFAULT_USER_AGENT = f"Codex-Pet-Club-Skill/{SKILL_VERSION}"
 API_KEY_PATTERN = re.compile(r"^cpc_sk_([a-f0-9]{8})_([A-Za-z0-9_-]{32,})$")
 
 
 class ClubError(RuntimeError):
     pass
+
+
+def maybe_auto_update() -> dict | None:
+    """Check the official manifest without blocking normal work on failure."""
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    try:
+        import skill_update
+
+        return skill_update.check_and_apply_update(
+            current_version=SKILL_VERSION,
+            skill_root=Path(__file__).resolve().parents[1],
+        )
+    except Exception as exc:
+        print(f"warning: automatic Skill update skipped: {exc}", file=sys.stderr)
+        return None
 
 
 def codex_home() -> Path:
@@ -624,6 +642,14 @@ def command_installed(_: argparse.Namespace) -> None:
     print(json.dumps(load_installed(), ensure_ascii=False, indent=2))
 
 
+def command_version(_: argparse.Namespace) -> None:
+    print(json.dumps({
+        "version": SKILL_VERSION,
+        "autoUpdate": True,
+        "manifest": "official-registry",
+    }, ensure_ascii=False, indent=2))
+
+
 def command_restore(args: argparse.Namespace) -> None:
     load_installed()
     slug = slugify(args.slug)
@@ -697,6 +723,9 @@ def parser() -> argparse.ArgumentParser:
     installed = sub.add_parser("installed")
     installed.set_defaults(func=command_installed)
 
+    version = sub.add_parser("version")
+    version.set_defaults(func=command_version)
+
     restore = sub.add_parser("restore")
     restore.add_argument("slug")
     restore.add_argument("--backup")
@@ -704,8 +733,12 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
-def main() -> int:
-    args = parser().parse_args()
+def main(argv: list[str] | None = None) -> int:
+    update = maybe_auto_update()
+    if update:
+        print(json.dumps(update, ensure_ascii=False, indent=2))
+        return 0
+    args = parser().parse_args(argv)
     try:
         args.func(args)
         return 0
