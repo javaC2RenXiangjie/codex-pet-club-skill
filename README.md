@@ -13,6 +13,7 @@
 - 绑定网站账户生成的 Skill Key，让作品自动归属账户
 - 查看当前绑定的创作者身份，或解除本机绑定
 - 按提交 ID 查询待审、通过、下架或拒绝状态
+- 跨电脑查看当前账户的全部投稿和最近一次投稿
 - 查看备份并一键恢复
 - 每次使用前自动检查并安装官方最新版 Skill
 
@@ -44,6 +45,9 @@ python scripts/pet_club.py configure --key cpc_sk_你的Key
 python scripts/pet_club.py account
 python scripts/pet_club.py validate C:\path\to\my-pet
 python scripts/pet_club.py publish C:\path\to\my-pet
+python scripts/pet_club.py submissions
+python scripts/pet_club.py submissions --status pending
+python scripts/pet_club.py latest
 python scripts/pet_club.py status 9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 ```
 
@@ -56,6 +60,8 @@ python scripts/pet_club.py configure --clear-key
 ```
 
 解除本机绑定不会影响其他电脑。若要让所有使用同一个 Key 的电脑立即失效，请在网站账户页撤销该 Key。
+
+投稿成功后，Skill 会在 `~/.codex/pet-club/submissions.json` 记录投稿 ID；“我的投稿”和“最近一次投稿”始终以服务器按永久用户 ID 返回的数据为准，因此换电脑后绑定同一账户仍能看到完整历史。单个未公开投稿状态也必须验证账户归属，不能只凭投稿 ID 查询。
 
 从 v0.4.2 起，每条 CLI 命令执行前都会查询桌宠库的版本清单。发现新版后，只会下载匹配版本的官方 GitHub Release，并校验文件大小、SHA-256 和 ZIP 安全性；升级成功后本次命令停止，下一轮对话重试原请求即可。升级过程不保留旧 Skill 副本，账户 Key、配置、投稿记录和桌宠备份位于 Skill 目录外，不受升级影响。网络不可用时仍会继续使用当前版本。
 

@@ -86,16 +86,32 @@ becomes the public catalog ID when published.
 
 ### `GET /api/submissions/{id}`
 
-Return the current moderation status for an unguessable submission ID:
+Require a browser session or `Authorization: Bearer <Skill-Key>`. Return the
+current moderation status only when the submission belongs to that user:
 
 ```json
 {"submission":{"id":"...","petKey":"...","displayName":"...","status":"pending","sha256":"...","createdAt":"...","updatedAt":"...","reviewedAt":null,"reviewNote":""}}
 ```
 
-Possible states are `pending`, `published`, `unpublished`, and `rejected`. A
+Return 404 for another user's submission instead of revealing whether it
+exists. Possible states are `pending`, `published`, `unpublished`, and `rejected`. A
 published submission is immediately available through the normal public pet
 endpoints using the same ID. An unpublished submission retains its package and
 audit history but is absent from public metadata and package endpoints.
+
+### `GET /api/me/submissions`
+
+Require a browser session or `Authorization: Bearer <Skill-Key>`. Return only
+submissions whose `owner_user_id` matches the authenticated user. Accept
+optional `status`, `page`, and `pageSize` query parameters.
+
+```json
+{"submissions":[{"id":"...","petKey":"pixel-corgi","displayName":"像素柯基","status":"pending","createdAt":"...","updatedAt":"...","reviewedAt":null,"reviewNote":""}],"page":1,"pageSize":12,"total":1,"totalPages":1,"status":null}
+```
+
+The server is authoritative across computers. The Skill may cache returned IDs
+under `~/.codex/pet-club/submissions.json`, but must not treat that cache as
+ownership proof or newer than server state.
 
 ### `GET /api/me`
 
