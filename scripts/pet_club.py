@@ -133,6 +133,10 @@ def request_json(url: str, method: str = "GET", body: bytes | None = None, heade
             raw = response.read(MAX_PACKAGE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         detail = exc.read(4096).decode("utf-8", errors="replace")
+        if exc.code == 429:
+            retry_after = exc.headers.get("Retry-After")
+            suffix = f" Retry after about {retry_after} seconds." if retry_after else " Try again later."
+            raise ClubError(f"Registry upload rate limit exceeded.{suffix}") from exc
         raise ClubError(f"Registry returned HTTP {exc.code}: {detail}") from exc
     except urllib.error.URLError as exc:
         raise ClubError(f"Could not reach registry: {exc.reason}") from exc

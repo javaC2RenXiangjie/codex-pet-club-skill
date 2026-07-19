@@ -46,8 +46,8 @@ Commands:
 - `publish <path-or-local-name>`: validate and upload when the configured
   registry has community submissions enabled. The official public registry
   accepts uploads into a protected moderation queue.
-- `status <SUBMISSION_ID>`: query whether an upload is still pending, published,
-  or rejected, including the moderator note when present.
+- `status <SUBMISSION_ID>`: query whether an upload is pending, published,
+  unpublished, or rejected, including the moderator note when present.
 - `backups`: list restorable local backups.
 - `installed`: list catalog IDs, versions, and checksums installed by the Skill.
 - `restore <slug> [--backup <path>]`: restore the newest or selected backup.
@@ -79,6 +79,9 @@ For local development, override it with `--api http://localhost:3001`.
    status. Never claim that a pending upload is publicly available.
 5. When the user asks for progress, run `status <SUBMISSION_ID>` and report the
    current state. A `published` submission can be installed with the same ID.
+6. If publishing returns a rate-limit error, report the retry interval and stop;
+   do not retry automatically. If status is `unpublished`, explain that the pet
+   was removed from the public catalog and cannot be newly installed.
 
 ### Recover an existing pet
 
