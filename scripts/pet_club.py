@@ -25,7 +25,7 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
 DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.2"
+DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.3.2"
 
 
 class ClubError(RuntimeError):
@@ -236,6 +236,16 @@ def validate_manifest(manifest: object) -> dict:
     return manifest
 
 
+def decode_manifest(raw: bytes) -> dict:
+    """Decode pet.json while accepting an optional UTF-8 BOM."""
+    return validate_manifest(json.loads(raw.decode("utf-8-sig")))
+
+
+def normalized_manifest_bytes(manifest: dict) -> bytes:
+    """Serialize pet.json as portable UTF-8 without a BOM."""
+    return (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
 def validate_pet_dir(path: Path) -> dict:
     path = path.resolve()
     manifest_path = path / "pet.json"
@@ -243,8 +253,8 @@ def validate_pet_dir(path: Path) -> dict:
     if not manifest_path.is_file() or not sheet_path.is_file():
         raise ClubError("Pet folder must contain pet.json and spritesheet.webp")
     try:
-        manifest = validate_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
-    except json.JSONDecodeError as exc:
+        manifest = decode_manifest(manifest_path.read_bytes())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ClubError(f"pet.json is invalid JSON: {exc}") from exc
     dimensions = webp_dimensions(sheet_path.read_bytes())
     if dimensions != EXPECTED_ATLAS:
@@ -280,7 +290,7 @@ def validate_zip(raw: bytes) -> tuple[dict, PurePosixPath, zipfile.ZipFile]:
     root = package_root(safe)
     prefix = "" if str(root) == "." else f"{root.as_posix()}/"
     try:
-        manifest = validate_manifest(json.loads(archive.read(prefix + "pet.json").decode("utf-8")))
+        manifest = decode_manifest(archive.read(prefix + "pet.json"))
         dimensions = webp_dimensions(archive.read(prefix + "spritesheet.webp"))
     except KeyError as exc:
         archive.close()
@@ -332,7 +342,10 @@ def pack_pet(path: Path) -> tuple[bytes, dict]:
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for child in sorted(path.iterdir()):
             if child.is_file() and child.name in allowed_names:
-                archive.write(child, arcname=child.name)
+                if child.name == "pet.json":
+                    archive.writestr(child.name, normalized_manifest_bytes(result["manifest"]))
+                else:
+                    archive.write(child, arcname=child.name)
     raw = buffer.getvalue()
     if len(raw) > MAX_PACKAGE_BYTES:
         raise ClubError("Packed pet exceeds 32 MiB")
@@ -373,8 +386,11 @@ def install_package(raw: bytes, expected_pet_key: str | None = None) -> dict:
                 continue
             destination = staging.joinpath(*relative.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            with archive.open(info) as source, destination.open("wb") as sink:
-                shutil.copyfileobj(source, sink)
+            if relative.as_posix() == "pet.json":
+                destination.write_bytes(normalized_manifest_bytes(result["manifest"]))
+            else:
+                with archive.open(info) as source, destination.open("wb") as sink:
+                    shutil.copyfileobj(source, sink)
         validate_pet_dir(staging)
         target = pets / result["petKey"]
         backup = backup_existing(target)
