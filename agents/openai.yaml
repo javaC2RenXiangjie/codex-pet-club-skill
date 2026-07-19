@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Pet Club"
-  short_description: "Install, publish, and track Codex pets by ID"
-  default_prompt: "Use $codex-pet-club to install or publish a Codex pet and track its status."
+  short_description: "Bind accounts, install, publish, and track Codex pets"
+  default_prompt: "Use $codex-pet-club to bind my creator Key or install and publish a Codex pet."

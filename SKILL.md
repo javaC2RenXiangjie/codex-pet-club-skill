@@ -1,6 +1,6 @@
 ---
 name: codex-pet-club
-description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user provides a website pet ID and asks Codex to download or install that pet locally, asks to browse remote pets, validate or package a local Codex v2 pet, publish a local pet to the moderated library, configure the registry endpoint, or recover an overwritten local pet.
+description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user provides a website pet ID and asks Codex to download or install that pet locally, bind or remove a creator Skill Key, inspect the bound account, browse remote pets, validate or package a local Codex v2 pet, publish an account-owned pet to the moderated library, configure the registry endpoint, or recover an overwritten local pet.
 ---
 
 # Codex Pet Club
@@ -16,8 +16,8 @@ downloads, ZIP extraction, atlas checks, or upload requests.
 - Tell the user that accepted uploads enter moderation and are not public
   immediately; if submissions are closed, report that instead.
 - Never overwrite a local pet without preserving the automatic backup.
-- Never print authorization tokens. Prefer the local config file or environment
-  variable when a future registry requires credentials.
+- Never print, log, or repeat a Skill Key. Persist it only through the CLI,
+  prefer `--key-stdin` when possible, and report only the masked preview.
 - Do not call a concept source kit an installable Codex pet. Installable pets
   require `pet.json`, `spritesheet.webp`, `id`, `displayName`,
   `spritesheetPath: "spritesheet.webp"`, `spriteVersionNumber: 2`, and a
@@ -35,7 +35,10 @@ python <skill-dir>/scripts/pet_club.py <command> [options]
 
 Commands:
 
-- `configure --api <url>`: save the registry base URL.
+- `configure [--api <url>] [--key <key> | --key-stdin | --clear-key]`: save
+  the registry URL, validate and bind a creator Key, or remove the local Key.
+- `account`: validate the saved Key and show the bound creator identity using a
+  masked email and Key preview.
 - `list [--json]`: list published installable pets.
 - `info <ID>`: show one remote pet and its license.
 - `install <ID>`: resolve the active catalog version, download, validate, back
@@ -43,9 +46,8 @@ Commands:
   `${CODEX_HOME:-~/.codex}/pet-club/installed.json`.
 - `validate <path-or-local-name>`: validate a local Codex v2 pet.
 - `pack <path-or-local-name> --output <zip>`: create a validated upload ZIP.
-- `publish <path-or-local-name>`: validate and upload when the configured
-  registry has community submissions enabled. The official public registry
-  accepts uploads into a protected moderation queue.
+- `publish <path-or-local-name>`: require the bound Key, validate and upload to
+  the protected moderation queue, and bind the submission to that account.
 - `status <SUBMISSION_ID>`: query whether an upload is pending, published,
   unpublished, or rejected, including the moderator note when present.
 - `backups`: list restorable local backups.
@@ -55,8 +57,22 @@ Commands:
 Pass `--api <url>` before a command to override saved configuration. For the
 official library, the default is `https://codex-pet-club.renxiangjie.workers.dev`.
 For local development, override it with `--api http://localhost:3001`.
+Use `CODEX_PET_CLUB_KEY` only as a temporary override; the normal flow stores
+the Key under `${CODEX_HOME:-~/.codex}/pet-club/config.json`.
 
 ## Workflows
+
+### Bind a creator account
+
+1. Accept only a Key the user explicitly provides from the website account
+   page. Never invent, request by email, or recover a Key.
+2. Run `configure --key-stdin` when the execution environment can pipe the Key
+   without echoing it; otherwise run `configure --key <KEY>`.
+3. Let the CLI validate the Key against `/api/me` before saving it.
+4. Report the masked Key preview, display name, and masked email only.
+5. Run `account` when the user asks which account is currently bound.
+6. Run `configure --clear-key` when the user asks to unbind this computer. This
+   does not revoke the Key on other computers; revocation happens on the site.
 
 ### Install a remote pet
 
@@ -74,12 +90,15 @@ For local development, override it with `--api http://localhost:3001`.
 1. Resolve the name under the default Codex pets directory or use the supplied
    path.
 2. Run `validate` and stop on every failure.
-3. Run `publish` only when the user explicitly requested an upload.
-4. Report the returned submission id, status URL, and `pending` moderation
+3. Confirm a creator Key is bound with `account`. If no Key is configured, tell
+   the user to create one on `/account` and bind it before publishing.
+4. Run `publish` only when the user explicitly requested an upload. The CLI
+   attaches the Key without including it in output.
+5. Report the returned submission id, status URL, and `pending` moderation
    status. Never claim that a pending upload is publicly available.
-5. When the user asks for progress, run `status <SUBMISSION_ID>` and report the
+6. When the user asks for progress, run `status <SUBMISSION_ID>` and report the
    current state. A `published` submission can be installed with the same ID.
-6. If publishing returns a rate-limit error, report the retry interval and stop;
+7. If publishing returns a rate-limit error, report the retry interval and stop;
    do not retry automatically. If status is `unpublished`, explain that the pet
    was removed from the public catalog and cannot be newly installed.
 

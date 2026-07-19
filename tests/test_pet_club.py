@@ -111,6 +111,122 @@ class InstalledStateTests(unittest.TestCase):
         self.assertEqual(pet_club.load_installed(), {"schemaVersion": 1, "pets": {}})
 
 
+class AccountKeyTests(unittest.TestCase):
+    KEY = "cpc_sk_a1b2c3d4_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.previous_home = os.environ.get("CODEX_HOME")
+        self.previous_key = os.environ.pop("CODEX_PET_CLUB_KEY", None)
+        os.environ["CODEX_HOME"] = self.temporary.name
+
+    def tearDown(self):
+        if self.previous_home is None:
+            os.environ.pop("CODEX_HOME", None)
+        else:
+            os.environ["CODEX_HOME"] = self.previous_home
+        if self.previous_key is not None:
+            os.environ["CODEX_PET_CLUB_KEY"] = self.previous_key
+        self.temporary.cleanup()
+
+    def test_configure_validates_and_saves_key_without_printing_secret(self):
+        args = pet_club.parser().parse_args([
+            "configure",
+            "--api",
+            "https://pets.example",
+            "--key",
+            self.KEY,
+        ])
+        identity = {
+            "user": {
+                "id": "user-1",
+                "displayName": "Orange Cat",
+                "emailMasked": "or****@example.com",
+                "emailVerified": True,
+            }
+        }
+        with patch.object(pet_club, "request_json", return_value=identity) as request, patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            args.func(args)
+
+        config = pet_club.load_config()
+        self.assertEqual(config["api"], "https://pets.example")
+        self.assertEqual(config["key"], self.KEY)
+        self.assertNotIn(self.KEY, stdout.getvalue())
+        self.assertIn("cpc_sk_a1b2c3d4_••••••••", stdout.getvalue())
+        request.assert_called_once_with(
+            "https://pets.example/api/me",
+            headers={"Authorization": f"Bearer {self.KEY}"},
+        )
+
+    def test_account_uses_saved_key_and_only_returns_a_preview(self):
+        pet_club.save_config({"api": "https://pets.example", "key": self.KEY})
+        args = pet_club.parser().parse_args(["account"])
+        identity = {"user": {"id": "user-1", "emailMasked": "or****@example.com"}}
+        with patch.object(pet_club, "request_json", return_value=identity) as request, patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            args.func(args)
+
+        self.assertNotIn(self.KEY, stdout.getvalue())
+        self.assertEqual(json.loads(stdout.getvalue())["keyPreview"], "cpc_sk_a1b2c3d4_••••••••")
+        request.assert_called_once_with(
+            "https://pets.example/api/me",
+            headers={"Authorization": f"Bearer {self.KEY}"},
+        )
+
+    def test_configure_accepts_key_from_stdin(self):
+        args = pet_club.parser().parse_args(["configure", "--key-stdin"])
+        identity = {"user": {"id": "user-1", "emailMasked": "or****@example.com"}}
+        with patch("sys.stdin", io.StringIO(f"{self.KEY}\n")), patch.object(
+            pet_club, "request_json", return_value=identity
+        ), patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            args.func(args)
+
+        self.assertEqual(pet_club.load_config()["key"], self.KEY)
+        self.assertNotIn(self.KEY, stdout.getvalue())
+
+    def test_clear_key_preserves_registry_configuration(self):
+        pet_club.save_config({"api": "https://pets.example", "key": self.KEY})
+        args = pet_club.parser().parse_args(["configure", "--clear-key"])
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            args.func(args)
+
+        self.assertEqual(pet_club.load_config(), {"api": "https://pets.example"})
+        self.assertFalse(json.loads(stdout.getvalue())["keyConfigured"])
+
+    def test_publish_requires_key_and_sends_bearer_authorization(self):
+        pet_club.save_config({"api": "https://pets.example", "key": self.KEY})
+        args = pet_club.parser().parse_args(["publish", "test-pet"])
+        packed = {
+            "name": "Test Pet",
+            "petKey": "test-pet",
+            "manifest": {"description": "", "author": "Tests", "license": "MIT"},
+            "sha256": "a" * 64,
+        }
+        with patch.object(pet_club, "resolve_local", return_value=Path("test-pet")), patch.object(
+            pet_club, "pack_pet", return_value=(b"zip", packed)
+        ), patch.object(
+            pet_club, "multipart", return_value=(b"body", "boundary")
+        ), patch.object(
+            pet_club, "request_json", return_value={"submission": {"id": "submission-1"}}
+        ) as request, patch("sys.stdout", new_callable=io.StringIO):
+            args.func(args)
+
+        headers = request.call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], f"Bearer {self.KEY}")
+
+    def test_publish_without_key_stops_before_packaging(self):
+        args = pet_club.parser().parse_args(["publish", "test-pet"])
+        with patch.object(pet_club, "pack_pet") as pack, self.assertRaisesRegex(
+            pet_club.ClubError,
+            "Skill Key is required",
+        ):
+            args.func(args)
+        pack.assert_not_called()
+
+
 class SubmissionStatusTests(unittest.TestCase):
     def test_status_queries_submission_endpoint(self):
         submission_id = "9d1ef2a4-55df-4d99-a722-18d1db7cb83a"

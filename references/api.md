@@ -37,9 +37,10 @@ deleting their historical package objects.
 ### `POST /api/pets`
 
 The official public registry accepts moderated Skill submissions using the
-contract below. No account is required in the first release; server-side ZIP
-validation, duplicate protection, a bounded pending queue, and manual review
-prevent uploads from becoming public directly.
+contract below. Official Skill v0.4.1 and later require
+`Authorization: Bearer <Skill-Key>` so the submission is bound to the stable
+user ID behind that Key. The server temporarily accepts legacy anonymous Skill
+clients during migration, but new clients must not publish anonymously.
 
 Limit each source to three upload attempts per rolling one-hour window. Return
 HTTP 429 with `Retry-After` when exceeded. The Skill must report that interval
@@ -79,6 +80,18 @@ Possible states are `pending`, `published`, `unpublished`, and `rejected`. A
 published submission is immediately available through the normal public pet
 endpoints using the same ID. An unpublished submission retains its package and
 audit history but is absent from public metadata and package endpoints.
+
+### `GET /api/me`
+
+Require `Authorization: Bearer <Skill-Key>`. Validate the Key and return the
+bound creator identity without returning the full email or Key:
+
+```json
+{"user":{"id":"...","displayName":"橘猫工作室","emailMasked":"or****@example.com","emailVerified":true}}
+```
+
+The CLI uses this endpoint before saving a Key and for the `account` command.
+Return HTTP 401 for an invalid, revoked, or malformed Key.
 
 ## Storage
 
