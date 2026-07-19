@@ -41,7 +41,7 @@ def release_zip(extra: dict[str, bytes] | None = None) -> bytes:
     return buffer.getvalue()
 
 
-def manifest(raw: bytes, version: str = "0.4.2") -> dict:
+def manifest(raw: bytes, version: str = "0.4.3") -> dict:
     return {
         "schemaVersion": 1,
         "version": version,
@@ -59,15 +59,15 @@ class ManifestTests(unittest.TestCase):
     def test_semantic_versions_compare_numerically(self):
         self.assertGreater(skill_update.parse_version("0.10.0"), skill_update.parse_version("0.9.9"))
         with self.assertRaises(skill_update.UpdateError):
-            skill_update.parse_version("v0.4.2")
+            skill_update.parse_version("v0.4.3")
 
     def test_manifest_requires_matching_official_release_and_hash(self):
         raw = release_zip()
         accepted = skill_update.validate_manifest(manifest(raw))
-        self.assertEqual(accepted["version"], "0.4.2")
+        self.assertEqual(accepted["version"], "0.4.3")
 
         bad_url = manifest(raw)
-        bad_url["archiveUrl"] = "https://example.com/codex-pet-club-skill-v0.4.2.zip"
+        bad_url["archiveUrl"] = "https://example.com/codex-pet-club-skill-v0.4.3.zip"
         with self.assertRaisesRegex(skill_update.UpdateError, "official GitHub release"):
             skill_update.validate_manifest(bad_url)
 
@@ -160,7 +160,7 @@ class InstallTests(unittest.TestCase):
 
     def test_source_checkout_never_self_modifies(self):
         with patch.object(skill_update, "fetch_manifest") as fetch:
-            result = skill_update.check_and_apply_update("0.4.2", ROOT)
+            result = skill_update.check_and_apply_update("0.4.3", ROOT)
         self.assertIsNone(result)
         fetch.assert_not_called()
 
@@ -187,7 +187,7 @@ class UpdateDecisionTests(unittest.TestCase):
             skill_update,
             "download_archive",
         ) as download:
-            result = skill_update.check_and_apply_update("0.4.2", self.installed)
+            result = skill_update.check_and_apply_update("0.4.3", self.installed)
         self.assertIsNone(result)
         download.assert_not_called()
 
@@ -197,23 +197,23 @@ class UpdateDecisionTests(unittest.TestCase):
             "fetch_manifest",
             side_effect=skill_update.UpdateError("offline"),
         ):
-            result = skill_update.check_and_apply_update("0.4.2", self.installed)
+            result = skill_update.check_and_apply_update("0.4.3", self.installed)
         self.assertIsNone(result)
 
     def test_newer_version_is_installed_and_requests_reload(self):
         raw = release_zip()
-        newer = manifest(raw, "0.4.3")
+        newer = manifest(raw, "0.4.4")
         with patch.object(skill_update, "fetch_manifest", return_value=newer), patch.object(
             skill_update,
             "download_archive",
             return_value=raw,
         ), patch.object(skill_update, "install_release") as install:
-            result = skill_update.check_and_apply_update("0.4.2", self.installed)
+            result = skill_update.check_and_apply_update("0.4.3", self.installed)
         install.assert_called_once_with(raw, self.installed)
         self.assertEqual(result, {
             "updated": True,
-            "fromVersion": "0.4.2",
-            "toVersion": "0.4.3",
+            "fromVersion": "0.4.3",
+            "toVersion": "0.4.4",
             "restartRequired": True,
         })
 
@@ -222,8 +222,8 @@ class CliBootstrapTests(unittest.TestCase):
     def test_update_stops_current_command_and_requests_next_turn(self):
         update = {
             "updated": True,
-            "fromVersion": "0.4.1",
-            "toVersion": "0.4.2",
+            "fromVersion": "0.4.2",
+            "toVersion": "0.4.3",
             "restartRequired": True,
         }
         with patch.object(pet_club, "maybe_auto_update", return_value=update), patch.object(
@@ -242,7 +242,7 @@ class CliBootstrapTests(unittest.TestCase):
             exit_code = pet_club.main(["version"])
         self.assertEqual(exit_code, 0)
         update.assert_called_once_with()
-        self.assertEqual(json.loads(stdout.getvalue())["version"], "0.4.2")
+        self.assertEqual(json.loads(stdout.getvalue())["version"], "0.4.3")
 
 
 if __name__ == "__main__":

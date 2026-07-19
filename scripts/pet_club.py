@@ -25,7 +25,7 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
 DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-SKILL_VERSION = "0.4.2"
+SKILL_VERSION = "0.4.3"
 DEFAULT_USER_AGENT = f"Codex-Pet-Club-Skill/{SKILL_VERSION}"
 API_KEY_PATTERN = re.compile(r"^cpc_sk_([a-f0-9]{8})_([A-Za-z0-9_-]{32,})$")
 
@@ -69,6 +69,10 @@ def config_path() -> Path:
 
 def installed_path() -> Path:
     return club_root() / "installed.json"
+
+
+def submissions_path() -> Path:
+    return club_root() / "submissions.json"
 
 
 def atomic_write_json(path: Path, data: dict) -> Path:
@@ -133,6 +137,55 @@ def clear_install_record(pet_key: str) -> bool:
     del data["pets"][pet_key]
     atomic_write_json(installed_path(), data)
     return True
+
+
+def load_submissions() -> dict:
+    path = submissions_path()
+    if not path.exists():
+        return {"schemaVersion": 1, "submissions": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClubError(f"Invalid submission history: {path}: {exc}") from exc
+    if (
+        not isinstance(data, dict)
+        or data.get("schemaVersion") != 1
+        or not isinstance(data.get("submissions"), list)
+    ):
+        raise ClubError(f"Invalid submission history shape: {path}")
+    return data
+
+
+def save_submission_record(submission: dict, display_name: str | None = None) -> Path:
+    submission_id = public_id(str(submission.get("id", "")))
+    data = load_submissions()
+    records = [
+        item for item in data["submissions"]
+        if isinstance(item, dict) and item.get("id") != submission_id
+    ]
+    previous = next(
+        (
+            item for item in data["submissions"]
+            if isinstance(item, dict) and item.get("id") == submission_id
+        ),
+        {},
+    )
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    record = {
+        **previous,
+        "id": submission_id,
+        "petKey": submission.get("petKey") or previous.get("petKey"),
+        "displayName": submission.get("displayName") or display_name or previous.get("displayName"),
+        "status": submission.get("status") or previous.get("status") or "pending",
+        "sha256": submission.get("sha256") or previous.get("sha256"),
+        "createdAt": submission.get("createdAt") or previous.get("createdAt") or now,
+        "updatedAt": submission.get("updatedAt") or now,
+        "reviewedAt": submission.get("reviewedAt"),
+        "reviewNote": submission.get("reviewNote") or "",
+        "recordedAt": now,
+    }
+    data["submissions"] = [record, *records][:200]
+    return atomic_write_json(submissions_path(), data)
 
 
 def normalize_api(value: str) -> str:
@@ -617,13 +670,60 @@ def command_publish(args: argparse.Namespace) -> None:
             **authorization_headers(key),
         },
     )
+    submission = response.get("submission")
+    if isinstance(submission, dict):
+        response["localRecordPath"] = str(save_submission_record(submission, result["name"]))
     print(json.dumps(response, ensure_ascii=False, indent=2))
 
 
 def command_status(args: argparse.Namespace) -> None:
+    key = auth_key(required=True)
+    assert key is not None
     encoded = urllib.parse.quote(public_id(args.submission_id), safe="")
-    response = request_json(f"{api_base(args)}/api/submissions/{encoded}")
+    response = request_json(
+        f"{api_base(args)}/api/submissions/{encoded}",
+        headers=authorization_headers(key),
+    )
+    submission = response.get("submission")
+    if isinstance(submission, dict):
+        response["localRecordPath"] = str(save_submission_record(submission))
     print(json.dumps(response, ensure_ascii=False, indent=2))
+
+
+def creator_submissions(args: argparse.Namespace, page_size: int) -> dict:
+    key = auth_key(required=True)
+    assert key is not None
+    query = {"page": max(1, args.page), "pageSize": page_size}
+    if getattr(args, "submission_status", None):
+        query["status"] = args.submission_status
+    return request_json(
+        f"{api_base(args)}/api/me/submissions?{urllib.parse.urlencode(query)}",
+        headers=authorization_headers(key),
+    )
+
+
+def command_submissions(args: argparse.Namespace) -> None:
+    response = creator_submissions(args, page_size=20)
+    submissions = response.get("submissions")
+    if not isinstance(submissions, list):
+        raise ClubError("Registry returned an unexpected submission list")
+    for submission in submissions:
+        if isinstance(submission, dict):
+            save_submission_record(submission)
+    response["localRecordPath"] = str(submissions_path())
+    print(json.dumps(response, ensure_ascii=False, indent=2))
+
+
+def command_latest(args: argparse.Namespace) -> None:
+    response = creator_submissions(args, page_size=1)
+    submissions = response.get("submissions")
+    if not isinstance(submissions, list):
+        raise ClubError("Registry returned an unexpected submission list")
+    submission = submissions[0] if submissions else None
+    result = {"submission": submission, "source": "server"}
+    if isinstance(submission, dict):
+        result["localRecordPath"] = str(save_submission_record(submission))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def command_backups(_: argparse.Namespace) -> None:
@@ -716,6 +816,18 @@ def parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status")
     status.add_argument("submission_id", metavar="SUBMISSION_ID")
     status.set_defaults(func=command_status)
+
+    submissions = sub.add_parser("submissions")
+    submissions.add_argument(
+        "--status",
+        dest="submission_status",
+        choices=["pending", "published", "unpublished", "rejected"],
+    )
+    submissions.add_argument("--page", type=int, default=1)
+    submissions.set_defaults(func=command_submissions)
+
+    latest = sub.add_parser("latest")
+    latest.set_defaults(func=command_latest, page=1, submission_status=None)
 
     backups = sub.add_parser("backups")
     backups.set_defaults(func=command_backups)

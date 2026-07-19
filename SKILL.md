@@ -1,6 +1,6 @@
 ---
 name: codex-pet-club
-description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user provides a website pet ID and asks Codex to download or install that pet locally, bind or remove a creator Skill Key, inspect the bound account, browse remote pets, validate or package a local Codex v2 pet, publish an account-owned pet to the moderated library, configure the registry endpoint, or recover an overwritten local pet.
+description: Manage Codex desktop pets through the Codex Pet Club registry. Use when a user provides a website pet ID and asks Codex to download or install that pet locally, bind or remove a creator Skill Key, inspect the bound account, browse remote pets, validate or package a local Codex v2 pet, publish an account-owned pet, list or check that account's submissions and moderation results, configure the registry endpoint, or recover an overwritten local pet.
 ---
 
 # Codex Pet Club
@@ -53,9 +53,13 @@ Commands:
 - `validate <path-or-local-name>`: validate a local Codex v2 pet.
 - `pack <path-or-local-name> --output <zip>`: create a validated upload ZIP.
 - `publish <path-or-local-name>`: require the bound Key, validate and upload to
-  the protected moderation queue, and bind the submission to that account.
-- `status <SUBMISSION_ID>`: query whether an upload is pending, published,
-  unpublished, or rejected, including the moderator note when present.
+  the protected moderation queue, bind the submission to that account, and
+  record its ID locally.
+- `submissions [--status <STATE>] [--page <N>]`: list the bound account's
+  server-side submissions across every computer using that identity.
+- `latest`: show the bound account's newest server-side submission.
+- `status <SUBMISSION_ID>`: require the bound Key and query one account-owned
+  upload, including its moderator note when present.
 - `backups`: list restorable local backups.
 - `installed`: list catalog IDs, versions, and checksums installed by the Skill.
 - `restore <slug> [--backup <path>]`: restore the newest or selected backup.
@@ -109,12 +113,30 @@ service unavailability does not block the current installed version.
 4. Run `publish` only when the user explicitly requested an upload. The CLI
    attaches the Key without including it in output.
 5. Report the returned submission id, status URL, and `pending` moderation
-   status. Never claim that a pending upload is publicly available.
+   status. The CLI records the ID under
+   `${CODEX_HOME:-~/.codex}/pet-club/submissions.json`. Never claim that a
+   pending upload is publicly available.
 6. When the user asks for progress, run `status <SUBMISSION_ID>` and report the
    current state. A `published` submission can be installed with the same ID.
 7. If publishing returns a rate-limit error, report the retry interval and stop;
    do not retry automatically. If status is `unpublished`, explain that the pet
    was removed from the public catalog and cannot be newly installed.
+
+### Track creator submissions
+
+1. Run `submissions` when the user asks for all of their uploads. Add
+   `--status pending|published|unpublished|rejected` only when they request a
+   filter.
+2. Run `latest` when they ask about their most recent upload without providing
+   an ID. The server is authoritative, so this works after binding the same
+   account on another computer.
+3. Run `status <SUBMISSION_ID>` when an exact ID is provided. Never query an
+   unowned submission by ID or omit the bound Key.
+4. Report the status, relevant dates, and moderator note. For `published`, say
+   it can be installed with the same public ID. For `rejected` or `unpublished`,
+   include the moderator note without inventing remediation.
+5. Treat `${CODEX_HOME:-~/.codex}/pet-club/submissions.json` as a local cache
+   only. Never use it to override newer server state.
 
 ### Recover an existing pet
 

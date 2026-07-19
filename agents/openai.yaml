@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Pet Club"
-  short_description: "Auto-update, install, publish, and track Codex pets"
-  default_prompt: "Use $codex-pet-club to update itself and manage my Codex pets."
+  short_description: "Install, publish, and track your Codex pet submissions"
+  default_prompt: "Use $codex-pet-club to manage my pets and show my latest submission status."

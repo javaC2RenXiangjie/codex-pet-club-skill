@@ -228,6 +228,24 @@ class AccountKeyTests(unittest.TestCase):
 
 
 class SubmissionStatusTests(unittest.TestCase):
+    KEY = "cpc_sk_a1b2c3d4_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.previous_home = os.environ.get("CODEX_HOME")
+        self.previous_key = os.environ.pop("CODEX_PET_CLUB_KEY", None)
+        os.environ["CODEX_HOME"] = self.temporary.name
+        pet_club.save_config({"api": "https://pets.example", "key": self.KEY})
+
+    def tearDown(self):
+        if self.previous_home is None:
+            os.environ.pop("CODEX_HOME", None)
+        else:
+            os.environ["CODEX_HOME"] = self.previous_home
+        if self.previous_key is not None:
+            os.environ["CODEX_PET_CLUB_KEY"] = self.previous_key
+        self.temporary.cleanup()
+
     def test_status_queries_submission_endpoint(self):
         submission_id = "9d1ef2a4-55df-4d99-a722-18d1db7cb83a"
         expected = {
@@ -237,7 +255,7 @@ class SubmissionStatusTests(unittest.TestCase):
                 "reviewNote": "checked",
             }
         }
-        args = pet_club.parser().parse_args(["--api", "https://pets.example", "status", submission_id])
+        args = pet_club.parser().parse_args(["status", submission_id])
 
         with patch.object(pet_club, "request_json", return_value=expected) as request, patch(
             "sys.stdout", new_callable=io.StringIO
@@ -245,9 +263,65 @@ class SubmissionStatusTests(unittest.TestCase):
             args.func(args)
 
         request.assert_called_once_with(
-            f"https://pets.example/api/submissions/{submission_id}"
+            f"https://pets.example/api/submissions/{submission_id}",
+            headers={"Authorization": f"Bearer {self.KEY}"},
         )
-        self.assertEqual(json.loads(stdout.getvalue()), expected)
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(output["submission"], expected["submission"])
+        self.assertTrue(Path(output["localRecordPath"]).is_file())
+
+    def test_lists_only_the_bound_accounts_server_submissions_and_records_them(self):
+        response = {
+            "submissions": [{
+                "id": "9d1ef2a4-55df-4d99-a722-18d1db7cb83a",
+                "displayName": "Test Pet",
+                "petKey": "test-pet",
+                "status": "pending",
+                "createdAt": "2026-07-20T00:00:00Z",
+                "updatedAt": "2026-07-20T00:00:00Z",
+            }],
+            "page": 1,
+            "pageSize": 20,
+            "total": 1,
+            "totalPages": 1,
+            "status": "pending",
+        }
+        args = pet_club.parser().parse_args(["submissions", "--status", "pending"])
+        with patch.object(pet_club, "request_json", return_value=response) as request, patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            args.func(args)
+
+        request.assert_called_once_with(
+            "https://pets.example/api/me/submissions?page=1&pageSize=20&status=pending",
+            headers={"Authorization": f"Bearer {self.KEY}"},
+        )
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(output["total"], 1)
+        history = pet_club.load_submissions()
+        self.assertEqual(history["submissions"][0]["id"], response["submissions"][0]["id"])
+
+    def test_latest_uses_the_server_when_this_computer_has_no_local_history(self):
+        latest = {
+            "id": "9d1ef2a4-55df-4d99-a722-18d1db7cb83a",
+            "displayName": "Remote Pet",
+            "status": "published",
+        }
+        args = pet_club.parser().parse_args(["latest"])
+        with patch.object(
+            pet_club,
+            "request_json",
+            return_value={"submissions": [latest], "page": 1, "total": 1},
+        ) as request, patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            args.func(args)
+
+        request.assert_called_once_with(
+            "https://pets.example/api/me/submissions?page=1&pageSize=1",
+            headers={"Authorization": f"Bearer {self.KEY}"},
+        )
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(output["source"], "server")
+        self.assertEqual(output["submission"]["displayName"], "Remote Pet")
 
     def test_rate_limit_reports_retry_interval_without_retrying(self):
         error = urllib.error.HTTPError(
