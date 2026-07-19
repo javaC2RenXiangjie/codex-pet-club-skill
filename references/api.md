@@ -4,6 +4,22 @@
 
 All successful responses are JSON except package bytes.
 
+### `GET /api/skill/version`
+
+Return the latest official Skill release manifest. Clients check this endpoint
+before every CLI command and continue with the installed version when the
+version service is unavailable.
+
+```json
+{"schemaVersion":1,"version":"0.4.2","archiveUrl":"https://github.com/javaC2RenXiangjie/codex-pet-club-skill/releases/download/v0.4.2/codex-pet-club-skill-v0.4.2.zip","sha256":"...","sizeBytes":12345,"publishedAt":"..."}
+```
+
+`archiveUrl` must use the exact official GitHub Release repository, tag, and
+filename for `version`. The CLI rejects another host or version, verifies the
+declared size and SHA-256, validates the ZIP, and replaces only the official
+`${CODEX_HOME:-~/.codex}/skills/codex-pet-club` installation. Source checkouts
+are never self-modified.
+
 ### `GET /api/pets`
 
 Return only published, installable Codex v2 pets:

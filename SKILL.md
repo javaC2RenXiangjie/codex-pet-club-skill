@@ -18,6 +18,11 @@ downloads, ZIP extraction, atlas checks, or upload requests.
 - Never overwrite a local pet without preserving the automatic backup.
 - Never print, log, or repeat a Skill Key. Persist it only through the CLI,
   prefer `--key-stdin` when possible, and report only the masked preview.
+- Let the CLI perform its automatic version check before every command. Never
+  bypass its official-release URL, size, SHA-256, or archive safety checks.
+- When the CLI returns `"restartRequired": true`, stop. Tell the user the Skill
+  was upgraded and ask them to repeat the request in their next Codex turn so
+  the new `SKILL.md` is loaded. Do not run the original command in that turn.
 - Do not call a concept source kit an installable Codex pet. Installable pets
   require `pet.json`, `spritesheet.webp`, `id`, `displayName`,
   `spritesheetPath: "spritesheet.webp"`, `spriteVersionNumber: 2`, and a
@@ -35,6 +40,7 @@ python <skill-dir>/scripts/pet_club.py <command> [options]
 
 Commands:
 
+- `version`: show the installed Skill version and automatic-update capability.
 - `configure [--api <url>] [--key <key> | --key-stdin | --clear-key]`: save
   the registry URL, validate and bind a creator Key, or remove the local Key.
 - `account`: validate the saved Key and show the bound creator identity using a
@@ -59,6 +65,14 @@ official library, the default is `https://codex-pet-club.renxiangjie.workers.dev
 For local development, override it with `--api http://localhost:3001`.
 Use `CODEX_PET_CLUB_KEY` only as a temporary override; the normal flow stores
 the Key under `${CODEX_HOME:-~/.codex}/pet-club/config.json`.
+
+Every CLI invocation first checks the official registry's tiny version
+manifest. If a newer release exists, the CLI downloads only the matching
+official GitHub Release, verifies its size and SHA-256, validates every archive
+path, installs it transactionally, and removes the transient old directory.
+Configuration, creator Key, installed-pet records, and pet backups remain under
+`${CODEX_HOME:-~/.codex}/pet-club` outside the Skill folder. Network or version
+service unavailability does not block the current installed version.
 
 ## Workflows
 
