@@ -25,7 +25,7 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
 DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/1.0"
+DEFAULT_USER_AGENT = "Codex-Pet-Club-Skill/0.2"
 
 
 class ClubError(RuntimeError):
@@ -48,6 +48,18 @@ def config_path() -> Path:
     return club_root() / "config.json"
 
 
+def installed_path() -> Path:
+    return club_root() / "installed.json"
+
+
+def atomic_write_json(path: Path, data: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(f".tmp-{uuid.uuid4().hex}")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+    return path
+
+
 def load_config() -> dict:
     path = config_path()
     if not path.exists():
@@ -61,12 +73,43 @@ def load_config() -> dict:
 
 def save_config(api: str) -> Path:
     api = normalize_api(api)
-    path = config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(f".tmp-{uuid.uuid4().hex}")
-    temporary.write_text(json.dumps({"api": api}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-    return path
+    return atomic_write_json(config_path(), {"api": api})
+
+
+def load_installed() -> dict:
+    path = installed_path()
+    if not path.exists():
+        return {"schemaVersion": 1, "pets": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClubError(f"Invalid installed-pet state: {path}: {exc}") from exc
+    if not isinstance(data, dict) or data.get("schemaVersion") != 1 or not isinstance(data.get("pets"), dict):
+        raise ClubError(f"Invalid installed-pet state shape: {path}")
+    return data
+
+
+def save_install_record(result: dict, catalog_id: str, version: str | None, sha256: str) -> Path:
+    data = load_installed()
+    pet_key = result["petKey"]
+    data["pets"][pet_key] = {
+        "catalogId": catalog_id,
+        "displayName": result["name"],
+        "version": version,
+        "sha256": sha256,
+        "installedPath": result["installedPath"],
+        "installedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    return atomic_write_json(installed_path(), data)
+
+
+def clear_install_record(pet_key: str) -> bool:
+    data = load_installed()
+    if pet_key not in data["pets"]:
+        return False
+    del data["pets"][pet_key]
+    atomic_write_json(installed_path(), data)
+    return True
 
 
 def normalize_api(value: str) -> str:
@@ -378,9 +421,11 @@ def command_list(args: argparse.Namespace) -> None:
         print("No published installable pets yet.")
         return
     for pet in pets:
+        version = pet.get("version")
+        version_label = f"v{version}" if version else "version unknown"
         print(
             f"{pet.get('id','-'):<38} {pet.get('displayName','-')}  "
-            f"[{pet.get('license','unknown')}]"
+            f"[{pet.get('license','unknown')}] {version_label}"
         )
 
 
@@ -390,6 +435,7 @@ def command_info(args: argparse.Namespace) -> None:
 
 
 def command_install(args: argparse.Namespace) -> None:
+    load_installed()
     catalog_id = public_id(args.pet_id)
     encoded = urllib.parse.quote(catalog_id, safe="")
     raw, headers = request_bytes(f"{api_base(args)}/api/pets/{encoded}/package")
@@ -400,9 +446,12 @@ def command_install(args: argparse.Namespace) -> None:
     expected_pet_key = headers.get("x-pet-key")
     if not expected_pet_key:
         raise ClubError("Registry response is missing x-pet-key")
+    version = headers.get("x-pet-version")
     result = install_package(raw, expected_pet_key)
     result["catalogId"] = catalog_id
+    result["version"] = version
     result["sha256"] = actual
+    result["recordPath"] = str(save_install_record(result, catalog_id, version, actual))
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -454,7 +503,12 @@ def command_backups(_: argparse.Namespace) -> None:
     print(json.dumps({"backups": rows}, ensure_ascii=False, indent=2))
 
 
+def command_installed(_: argparse.Namespace) -> None:
+    print(json.dumps(load_installed(), ensure_ascii=False, indent=2))
+
+
 def command_restore(args: argparse.Namespace) -> None:
+    load_installed()
     slug = slugify(args.slug)
     if args.backup:
         backup = Path(args.backup).expanduser().resolve()
@@ -471,7 +525,8 @@ def command_restore(args: argparse.Namespace) -> None:
     shutil.rmtree(staging)
     shutil.copytree(backup, staging)
     os.replace(staging, target)
-    print(json.dumps({"restored": str(target), "from": str(backup), "previousBackup": str(displaced) if displaced else None}, ensure_ascii=False, indent=2))
+    cleared = clear_install_record(slug)
+    print(json.dumps({"restored": str(target), "from": str(backup), "previousBackup": str(displaced) if displaced else None, "versionRecordCleared": cleared}, ensure_ascii=False, indent=2))
 
 
 def parser() -> argparse.ArgumentParser:
@@ -510,6 +565,9 @@ def parser() -> argparse.ArgumentParser:
 
     backups = sub.add_parser("backups")
     backups.set_defaults(func=command_backups)
+
+    installed = sub.add_parser("installed")
+    installed.set_defaults(func=command_installed)
 
     restore = sub.add_parser("restore")
     restore.add_argument("slug")
