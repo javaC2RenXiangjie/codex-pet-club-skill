@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "pet_club.py"
@@ -48,6 +50,29 @@ class InstalledStateTests(unittest.TestCase):
 
     def test_missing_state_is_an_empty_versioned_registry(self):
         self.assertEqual(pet_club.load_installed(), {"schemaVersion": 1, "pets": {}})
+
+
+class SubmissionStatusTests(unittest.TestCase):
+    def test_status_queries_submission_endpoint(self):
+        submission_id = "9d1ef2a4-55df-4d99-a722-18d1db7cb83a"
+        expected = {
+            "submission": {
+                "id": submission_id,
+                "status": "published",
+                "reviewNote": "checked",
+            }
+        }
+        args = pet_club.parser().parse_args(["--api", "https://pets.example", "status", submission_id])
+
+        with patch.object(pet_club, "request_json", return_value=expected) as request, patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            args.func(args)
+
+        request.assert_called_once_with(
+            f"https://pets.example/api/submissions/{submission_id}"
+        )
+        self.assertEqual(json.loads(stdout.getvalue()), expected)
 
 
 if __name__ == "__main__":

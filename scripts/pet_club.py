@@ -491,6 +491,12 @@ def command_publish(args: argparse.Namespace) -> None:
     print(json.dumps(response, ensure_ascii=False, indent=2))
 
 
+def command_status(args: argparse.Namespace) -> None:
+    encoded = urllib.parse.quote(public_id(args.submission_id), safe="")
+    response = request_json(f"{api_base(args)}/api/submissions/{encoded}")
+    print(json.dumps(response, ensure_ascii=False, indent=2))
+
+
 def command_backups(_: argparse.Namespace) -> None:
     root = club_root() / "backups"
     rows = []
@@ -562,6 +568,10 @@ def parser() -> argparse.ArgumentParser:
     publish = sub.add_parser("publish")
     publish.add_argument("local")
     publish.set_defaults(func=command_publish)
+
+    status = sub.add_parser("status")
+    status.add_argument("submission_id", metavar="SUBMISSION_ID")
+    status.set_defaults(func=command_status)
 
     backups = sub.add_parser("backups")
     backups.set_defaults(func=command_backups)

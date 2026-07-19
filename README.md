@@ -10,6 +10,7 @@
 - 安装前自动备份同名本地桌宠
 - 校验或打包本地桌宠
 - 上传投稿并进入审核队列
+- 按提交 ID 查询待审、通过或拒绝状态
 - 查看备份并一键恢复
 
 安装与投稿都会校验 ZIP 路径、SHA-256、`spriteVersionNumber: 2`，以及 `1536 × 2288` WebP 图集尺寸。
@@ -37,6 +38,7 @@ python scripts/pet_club.py install 9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 python scripts/pet_club.py installed
 python scripts/pet_club.py validate C:\path\to\my-pet
 python scripts/pet_club.py publish C:\path\to\my-pet
+python scripts/pet_club.py status 9d1ef2a4-55df-4d99-a722-18d1db7cb83a
 ```
 
 本地开发时可临时覆盖桌宠库地址：
