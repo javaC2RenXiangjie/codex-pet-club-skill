@@ -13,7 +13,7 @@
 - 按提交 ID 查询待审、通过、下架或拒绝状态
 - 查看备份并一键恢复
 
-安装与投稿都会校验 ZIP 路径、SHA-256、`spriteVersionNumber: 2`，以及 `1536 × 2288` WebP 图集尺寸。
+安装与投稿都会校验 ZIP 路径、SHA-256、`spriteVersionNumber: 2`，以及 `1536 × 2288` WebP 图集尺寸。CLI 兼容 Windows 工具生成的 UTF-8 BOM，并在打包或安装时自动将 `pet.json` 规范化为无 BOM 的 UTF-8。
 
 ## 安装
 
