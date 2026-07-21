@@ -242,7 +242,7 @@ class CliBootstrapTests(unittest.TestCase):
             exit_code = pet_club.main(["version"])
         self.assertEqual(exit_code, 0)
         update.assert_called_once_with()
-        self.assertEqual(json.loads(stdout.getvalue())["version"], "0.4.3")
+        self.assertEqual(json.loads(stdout.getvalue())["version"], "0.4.4")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 让 Codex 按网站唯一 ID 自动安装桌宠，省去手动下载、解压与搬运文件。
 
-> 🌐 主站与桌宠库：[Codex Pet Club](https://codex-pet-club.renxiangjie.workers.dev)
+> 🌐 主站与桌宠库：[Codex Pet Club](https://codex-pet-club.cpc-community.workers.dev)
 
 ## 能做什么
 

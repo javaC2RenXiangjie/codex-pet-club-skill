@@ -65,7 +65,7 @@ Commands:
 - `restore <slug> [--backup <path>]`: restore the newest or selected backup.
 
 Pass `--api <url>` before a command to override saved configuration. For the
-official library, the default is `https://codex-pet-club.renxiangjie.workers.dev`.
+official library, the default is `https://codex-pet-club.cpc-community.workers.dev`.
 For local development, override it with `--api http://localhost:3001`.
 Use `CODEX_PET_CLUB_KEY` only as a temporary override; the normal flow stores
 the Key under `${CODEX_HOME:-~/.codex}/pet-club/config.json`.

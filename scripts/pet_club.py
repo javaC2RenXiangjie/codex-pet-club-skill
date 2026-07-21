@@ -24,8 +24,8 @@ import zipfile
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 96 * 1024 * 1024
 EXPECTED_ATLAS = (1536, 2288)
-DEFAULT_API = "https://codex-pet-club.renxiangjie.workers.dev"
-SKILL_VERSION = "0.4.3"
+DEFAULT_API = "https://codex-pet-club.cpc-community.workers.dev"
+SKILL_VERSION = "0.4.4"
 DEFAULT_USER_AGENT = f"Codex-Pet-Club-Skill/{SKILL_VERSION}"
 API_KEY_PATTERN = re.compile(r"^cpc_sk_([a-f0-9]{8})_([A-Za-z0-9_-]{32,})$")
 

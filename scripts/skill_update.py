@@ -16,7 +16,7 @@ import uuid
 import zipfile
 
 
-MANIFEST_URL = "https://codex-pet-club.renxiangjie.workers.dev/api/skill/version"
+MANIFEST_URL = "https://codex-pet-club.cpc-community.workers.dev/api/skill/version"
 OFFICIAL_RELEASE_PATTERN = re.compile(
     r"^https://github\.com/javaC2RenXiangjie/codex-pet-club-skill/releases/download/"
     r"v(?P<tag>\d+\.\d+\.\d+)/codex-pet-club-skill-v(?P<file>\d+\.\d+\.\d+)\.zip$"
